@@ -577,41 +577,21 @@ void event_base_free(struct event_base *);
 #define _EVENT_LOG_ERR EVENT_LOG_ERR
 
 /**
-  A callback function used to intercept Libevent's log messages.
-
-  @see event_set_log_callback
+  日志回调函数定义
  */
 typedef void (*event_log_cb)(int severity, const char *msg);
 /**
-  Redirect Libevent's log messages.
-
-  @param cb a function taking two arguments: an integer severity between
-     _EVENT_LOG_DEBUG and _EVENT_LOG_ERR, and a string.  If cb is NULL,
-	 then the default log is used.
-
-  NOTE: The function you provide *must not* call any other libevent
-  functionality.  Doing so can produce undefined behavior.
+  设置日志回调函数，libevent库写日志将调用指定的回调，否则日志输出到stderr
   */
 void event_set_log_callback(event_log_cb cb);
 
 /**
-   A function to be called if Libevent encounters a fatal internal error.
-
-   @see event_set_fatal_callback
+   libevent异常退出回调函数定义
  */
 typedef void (*event_fatal_cb)(int err);
 
 /**
- Override Libevent's behavior in the event of a fatal internal error.
-
- By default, Libevent will call exit(1) if a programming error makes it
- impossible to continue correct operation.  This function allows you to supply
- another callback instead.  Note that if the function is ever invoked,
- something is wrong with your program, or with Libevent: any subsequent calls
- to Libevent may result in undefined behavior.
-
- Libevent will (almost) always log an _EVENT_LOG_ERR message before calling
- this function; look at the last log message to see why Libevent has died.
+ 设置libevent异常退出回调函数，libevent库内部异常退出将调用设置的回调函数。
  */
 void event_set_fatal_callback(event_fatal_cb cb);
 
@@ -1151,22 +1131,15 @@ const struct timeval *event_base_init_common_timeout(struct event_base *base,
 
 #if !defined(_EVENT_DISABLE_MM_REPLACEMENT) || defined(_EVENT_IN_DOXYGEN)
 /**
- Override the functions that Libevent uses for memory management.
-
- Usually, Libevent uses the standard libc functions malloc, realloc, and
- free to allocate memory.  Passing replacements for those functions to
- event_set_mem_functions() overrides this behavior.
-
- Note that all memory returned from Libevent will be allocated by the
- replacement functions rather than by malloc() and realloc().  Thus, if you
- have replaced those functions, it will not be appropriate to free() memory
- that you get from Libevent.  Instead, you must use the free_fn replacement
- that you provided.
-
- Note also that if you are going to call this function, you should do so
- before any call to any Libevent function that does allocation.
- Otherwise, those funtions will allocate their memory using malloc(), but
- then later free it using your provided free_fn.
+  设置内存分配函数，一般无需设置。如尚梃置，注意:
+  1、替换内存管理函数影响libevent 随后的所有分配、调整大小和释放内存操作。所以必须保证在调用任何其他libevent函数之前进行定制。
+  否则，Libevent可能用定制的free函数释放C语言 库的malloc函数分配的内存。
+  2、malloc和realloc函数返回的内存块应该具有和C库返回的内存块一样的地址对齐。
+  3、realloc函数应该正确处理realloc(NULL, sz)（也就是当作malloc(sz)处理）。
+  4、realloc函数应该正确处理realloc(ptr, 0)（也就是当作free(ptr)处理）。
+  5、如果在多个线程中使用libevent，替代的内存管理函数需要是线程安全的。
+  6、如果要释放由Libevent函数分配的内存，并且已经定制了malloc和realloc函数，那么就应该使用定制的free函数释放。
+  否则将会C语言标准库的free函数释放定制内存分配函数分配的内存，这将发生错误。所以三者要么全部不定制，要么全部定制。
 
  @param malloc_fn A replacement for malloc.
  @param realloc_fn A replacement for realloc

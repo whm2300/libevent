@@ -23,6 +23,12 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+/*定义libevent内部使用开辟和释放内存函数
+ *如果在编译libevent库时没有加入--disable-malloc-replacement(默认不存在)
+ *用户将可以自定义内存分配函数，如果用户设置了将调用标准C函数
+ */
+ 
 #ifndef _EVENT_MM_INTERNAL_H
 #define _EVENT_MM_INTERNAL_H
 
@@ -33,9 +39,6 @@ extern "C" {
 #endif
 
 #ifndef _EVENT_DISABLE_MM_REPLACEMENT
-/* Internal use only: Memory allocation functions. We give them nice short
- * mm_names for our own use, but make sure that the symbols have longer names
- * so they don't conflict with other libraries (like, say, libmm). */
 void *event_mm_malloc_(size_t sz);
 void *event_mm_calloc_(size_t count, size_t size);
 char *event_mm_strdup_(const char *s);
@@ -46,7 +49,7 @@ void event_mm_free_(void *p);
 #define mm_strdup(s) event_mm_strdup_(s)
 #define mm_realloc(p, sz) event_mm_realloc_((p), (sz))
 #define mm_free(p) event_mm_free_(p)
-#else
+#else  //直接调用标准C函数
 #define mm_malloc(sz) malloc(sz)
 #define mm_calloc(n, sz) calloc((n), (sz))
 #define mm_strdup(s) strdup(s)

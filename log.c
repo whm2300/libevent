@@ -61,7 +61,7 @@ static void _warn_helper(int severity, const char *errstr, const char *fmt,
 static void event_log(int severity, const char *msg);
 static void event_exit(int errcode) EV_NORETURN;
 
-static event_fatal_cb fatal_fn = NULL;
+static event_fatal_cb fatal_fn = NULL;  //保存异常退出函数指针
 
 void
 event_set_fatal_callback(event_fatal_cb cb)
@@ -69,6 +69,7 @@ event_set_fatal_callback(event_fatal_cb cb)
 	fatal_fn = cb;
 }
 
+/*函数产生错误日志时调用*/
 static void
 event_exit(int errcode)
 {
@@ -89,7 +90,7 @@ event_err(int eval, const char *fmt, ...)
 	va_start(ap, fmt);
 	_warn_helper(_EVENT_LOG_ERR, strerror(errno), fmt, ap);
 	va_end(ap);
-	event_exit(eval);
+	event_exit(eval);  //产生错误日志直接退出
 }
 
 void
@@ -187,7 +188,7 @@ _warn_helper(int severity, const char *errstr, const char *fmt, va_list ap)
 	event_log(severity, buf);
 }
 
-static event_log_cb log_fn = NULL;
+static event_log_cb log_fn = NULL;  //保存日志回调函数指针
 
 void
 event_set_log_callback(event_log_cb cb)

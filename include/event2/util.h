@@ -28,8 +28,7 @@
 
 /** @file event2/util.h
 
-  Common convenience functions for cross-platform portability and
-  related socket manipulations.
+ 一些常见的跨平台函数封装和工具性函数
 
  */
 
@@ -274,49 +273,32 @@ extern "C" {
 #define evutil_socket_t int
 #endif
 
-/** Create two new sockets that are connected to each other.
+/** ocketpair创建了一对无名的套接字描述符（只能在AF_UNIX域中使用）
 
-    On Unix, this simply calls socketpair().  On Windows, it uses the
-    loopback network interface on 127.0.0.1, and only
-    AF_INET,SOCK_STREAM are supported.
-
-    (This may fail on some Windows hosts where firewall software has cleverly
-    decided to keep 127.0.0.1 from talking to itself.)
-
-    Parameters and return values are as for socketpair()
+    在linux上直接调用socketpair(). 
 */
 int evutil_socketpair(int d, int type, int protocol, evutil_socket_t sv[2]);
-/** Do platform-specific operations as needed to make a socket nonblocking.
+/** 设置文件描述符非阻塞属性
 
-    @param sock The socket to make nonblocking
     @return 0 on success, -1 on failure
  */
 int evutil_make_socket_nonblocking(evutil_socket_t sock);
 
-/** Do platform-specific operations to make a listener socket reusable.
-
-    Specifically, we want to make sure that another program will be able
-    to bind this address right after we've closed the listener.
-
-    This differs from Windows's interpretation of "reusable", which
-    allows multiple listeners to bind the same address at the same time.
+/** 设置地址可以重用
 
     @param sock The socket to make reusable
     @return 0 on success, -1 on failure
  */
 int evutil_make_listen_socket_reuseable(evutil_socket_t sock);
 
-/** Do platform-specific operations as needed to close a socket upon a
-    successful execution of one of the exec*() functions.
+/** 设置文件描述符关闭当调用exec*()函数时
 
     @param sock The socket to be closed
     @return 0 on success, -1 on failure
  */
 int evutil_make_socket_closeonexec(evutil_socket_t sock);
 
-/** Do the platform-specific call needed to close a socket returned from
-    socket() or accept().
-
+/** 关闭文件描述符
     @param sock The socket to be closed
     @return 0 on success, -1 on failure
  */

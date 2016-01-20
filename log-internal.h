@@ -24,6 +24,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+/*libevent库使用日志头文件，仅供libevent框架使用，可以通过设置日志回调函数，重定向日志输出，
+ *日志默认输出到stderr
+ */
 #ifndef _LOG_H_
 #define _LOG_H_
 
@@ -50,6 +54,7 @@ void _event_debugx(const char *fmt, ...) EV_CHECK_FMT(1,2);
 
 #ifdef USE_DEBUG
 #define event_debug(x) _event_debugx x
+//release 下event_debug为NULL
 #else
 #define event_debug(x) do {;} while (0)
 #endif

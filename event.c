@@ -2659,6 +2659,7 @@ static void *(*_mm_malloc_fn)(size_t sz) = NULL;
 static void *(*_mm_realloc_fn)(void *p, size_t sz) = NULL;
 static void (*_mm_free_fn)(void *p) = NULL;
 
+/*如果用户设置的自定义内存分配函数，调用用户设置自定义函数，否则调用标准C函数。*/
 void *
 event_mm_malloc_(size_t sz)
 {

@@ -28,21 +28,12 @@
 
 /** @file event2/thread.h
 
-  Functions for multi-threaded applications using Libevent.
+  libevent默认不开启线程安全，
+  使用 event_use_windows_threads() or event_use_pthreads() respectively.开启多线程。
+  如果使用其他线程库，必须使用evthread_set_lock_callbacks() and evthread_set_condition_callbacks()
+  设置互斥量和条件变量。
 
-  When using a multi-threaded application in which multiple threads
-  add and delete events from a single event base, Libevent needs to
-  lock its data structures.
-
-  Like the memory-management function hooks, all of the threading functions
-  _must_ be set up before an event_base is created if you want the base to
-  use them.
-
-  Most programs will either be using Windows threads or Posix threads.  You
-  can configure Libevent to use one of these event_use_windows_threads() or
-  event_use_pthreads() respectively.  If you're using another threading
-  library, you'll need to configure threading functions manually using
-  evthread_set_lock_callbacks() and evthread_set_condition_callbacks().
+  如开启多线程，libevent操作函数为线程安全，别的线程是可以线程安全地使用event_add把一个event添加到主线程的event_base中。
 
  */
 
@@ -57,15 +48,11 @@ extern "C" {
 
    @{
 */
-/** A flag passed to a locking callback when the lock was allocated as a
- * read-write lock, and we want to acquire or release the lock for writing. */
+/** 读标识 */
 #define EVTHREAD_WRITE	0x04
-/** A flag passed to a locking callback when the lock was allocated as a
- * read-write lock, and we want to acquire or release the lock for reading. */
+/** 写标识 */
 #define EVTHREAD_READ	0x08
-/** A flag passed to a locking callback when we don't want to block waiting
- * for the lock; if we can't get the lock immediately, we will instead
- * return nonzero from the locking callback. */
+/**不能立即操作标识 */
 #define EVTHREAD_TRY    0x10
 /**@}*/
 
@@ -77,29 +64,18 @@ extern "C" {
    @name Types of locks
 
    @{*/
-/** A recursive lock is one that can be acquired multiple times at once by the
- * same thread.  No other process can allocate the lock until the thread that
- * has been holding it has unlocked it as many times as it locked it. */
+/** 递归锁，同一线程可以获取多次 */
 #define EVTHREAD_LOCKTYPE_RECURSIVE 1
-/* A read-write lock is one that allows multiple simultaneous readers, but
- * where any one writer excludes all other writers and readers. */
+/* 读写锁 */
 #define EVTHREAD_LOCKTYPE_READWRITE 2
 /**@}*/
 
-/** This structure describes the interface a threading library uses for
- * locking.   It's used to tell evthread_set_lock_callbacks() how to use
- * locking on this platform.
+/** 锁描述结构，支持类型和API
  */
 struct evthread_lock_callbacks {
-	/** The current version of the locking API.  Set this to
-	 * EVTHREAD_LOCK_API_VERSION */
+	/** 版本号，设置宏为EVTHREAD_LOCK_API_VERSION */
 	int lock_api_version;
-	/** Which kinds of locks does this version of the locking API
-	 * support?  A bitfield of EVTHREAD_LOCKTYPE_RECURSIVE and
-	 * EVTHREAD_LOCKTYPE_READWRITE.
-	 *
-	 * (Note that RECURSIVE locks are currently mandatory, and
-	 * READWRITE locks are not currently used.)
+	/** 支持锁类型，普通锁、递归锁、读写锁。
 	 **/
 	unsigned supported_locktypes;
 	/** Function to allocate and initialize new lock of type 'locktype'.
@@ -116,9 +92,7 @@ struct evthread_lock_callbacks {
 	int (*unlock)(unsigned mode, void *lock);
 };
 
-/** Sets a group of functions that Libevent should use for locking.
- * For full information on the required callback API, see the
- * documentation for the individual members of evthread_lock_callbacks.
+/** 设置锁API
  *
  * Note that if you're using Windows or the Pthreads threading library, you
  * probably shouldn't call this function; instead, use
@@ -130,9 +104,7 @@ int evthread_set_lock_callbacks(const struct evthread_lock_callbacks *);
 
 struct timeval;
 
-/** This structure describes the interface a threading library uses for
- * condition variables.  It's used to tell evthread_set_condition_callbacks
- * how to use locking on this platform.
+/** 条件变量描述
  */
 struct evthread_condition_callbacks {
 	/** The current version of the conditions API.  Set this to

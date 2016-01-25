@@ -56,17 +56,18 @@ extern "C" {
 #define EV_CLOSURE_SIGNAL 1
 #define EV_CLOSURE_PERSIST 2
 
-/** Structure to define the backend of a given event_base. */
+/** 定义后端使用接口及数据结构，改结构体总是指向libevnt定义的epoll select poll 等全局常量 */
 struct eventop {
-	/** The name of this backend. */
+	/** 使用后端名称，epoll select ... */
 	const char *name;
-	/** Function to set up an event_base to use this backend.  It should
+	/** 初始化后端函数。 It should
 	 * create a new structure holding whatever information is needed to
 	 * run the backend, and return it.  The returned pointer will get
 	 * stored by event_init into the event_base.evbase field.  On failure,
 	 * this function should return NULL. */
 	void *(*init)(struct event_base *);
-	/** Enable reading/writing on a given fd or signal.  'events' will be
+	/** 增加监听事件 
+	 * Enable reading/writing on a given fd or signal.  'events' will be
 	 * the events that we're trying to enable: one or more of EV_READ,
 	 * EV_WRITE, EV_SIGNAL, and EV_ET.  'old' will be those events that
 	 * were enabled on this fd previously.  'fdinfo' will be a structure
@@ -75,21 +76,21 @@ struct eventop {
 	 * added.  The function should return 0 on success and -1 on error.
 	 */
 	int (*add)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo);
-	/** As "add", except 'events' contains the events we mean to disable. */
+	/** 移除指定事件 */
 	int (*del)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo);
-	/** Function to implement the core of an event loop.  It must see which
+	/** 开始监听， epoll_wait
+	    Function to implement the core of an event loop.  It must see which
 	    added events are ready, and cause event_active to be called for each
 	    active event (usually via event_io_active or such).  It should
 	    return 0 on success and -1 on error.
 	 */
 	int (*dispatch)(struct event_base *, struct timeval *);
-	/** Function to clean up and free our data from the event_base. */
+	/** 清理后端结构使用的所有资源 */
 	void (*dealloc)(struct event_base *);
 	/** Flag: set if we need to reinitialize the event base after we fork.
 	 */
 	int need_reinit;
-	/** Bit-array of supported event_method_features that this backend can
-	 * provide. */
+	/** 后端能提供的特征 */
 	enum event_method_feature features;
 	/** Length of the extra information we should record for each fd that
 	    has one or more active events.  This information is recorded
@@ -168,10 +169,9 @@ extern int _event_debug_mode_on;
 #endif
 
 struct event_base {
-	/** Function pointers and other data to describe this event_base's
-	 * backend. */
+	/** 具体使用后端结构体指向全局变量eventops某个元素，epoll后端可能指向epollops_changelist */
 	const struct eventop *evsel;
-	/** Pointer to backend-specific data. */
+	/** 后端定义的数据结构，如epoll指向 struct epollop. */
 	void *evbase;
 
 	/** List of changes to tell backend about at next dispatch.  Only used

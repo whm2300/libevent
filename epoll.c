@@ -56,7 +56,9 @@
 #include "changelist-internal.h"
 
 struct epollop {
+    /*epoll_wait中传入的events*/
 	struct epoll_event *events;
+	/*events数目，如果触发事件大于nevents，则nevents成倍增大*/
 	int nevents;
 	int epfd;
 };

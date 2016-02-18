@@ -70,6 +70,7 @@ extern "C" {
 
 /* Some openbsd autoconf versions get the name of this macro wrong. */
 #if defined(_EVENT_SIZEOF_VOID__) && !defined(_EVENT_SIZEOF_VOID_P)
+//ÏµÍ³×Ö³¤
 #define _EVENT_SIZEOF_VOID_P _EVENT_SIZEOF_VOID__
 #endif
 

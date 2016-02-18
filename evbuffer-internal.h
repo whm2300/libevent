@@ -50,8 +50,10 @@ extern "C" {
  * more than 5% of each allocation on overhead.  It would be nice to lose even
  * less space, though. */
 #if _EVENT_SIZEOF_VOID_P < 8
+//32位系统，buffer最小为512
 #define MIN_BUFFER_SIZE	512
 #else
+//64位系统，buffer最小为1024
 #define MIN_BUFFER_SIZE	1024
 #endif
 
@@ -76,34 +78,29 @@ struct evbuffer_cb_entry {
 struct bufferevent;
 struct evbuffer_chain;
 struct evbuffer {
-	/** The first chain in this buffer's linked list of chains. */
+	/** 链表头指针 */
 	struct evbuffer_chain *first;
-	/** The last chain in this buffer's linked list of chains. */
+	/** 链表尾指针 */
 	struct evbuffer_chain *last;
 
-	/** Pointer to the next pointer pointing at the 'last_with_data' chain.
+	/** 指向链表中最后一个有数据的evbuffer_chain
 	 *
-	 * To unpack:
+	 * 如果所有chains中的buffer都没有数据，last_with_datap指向第一个chain
+	 * 如果evbuffer没有chains，last_with_datap = NULL
 	 *
-	 * The last_with_data chain is the last chain that has any data in it.
-	 * If all chains in the buffer are empty, it is the first chain.
-	 * If the buffer has no chains, it is NULL.
-	 *
-	 * The last_with_datap pointer points at _whatever 'next' pointer_
-	 * points at the last_with_datap chain.  If the last_with_data chain
-	 * is the first chain, or it is NULL, then the last_with_datap pointer
-	 * is &buf->first.
+	 * 这是一个二级指针。使用*last_with_datap时，指向的是链表中最后一个有数据的evbuffer_chain。
+	 * 所以last_with_datap存储的是倒数第二个evbuffer_chain的next成员地址。
+	 * 一开始buffer->last_with_datap = &buffer->first;此时first为NULL。所以当链表没有节点时
+	 * *last_with_datap为NULL。当只有一个节点时*last_with_datap就是first。
 	 */
 	struct evbuffer_chain **last_with_datap;
 
-	/** Total amount of bytes stored in all chains.*/
+	/** 链表中所有chain的总字节数。存储字节数，非buffer总长度。 */
 	size_t total_len;
 
-	/** Number of bytes we have added to the buffer since we last tried to
-	 * invoke callbacks. */
+	/** 上次尝试执行回调后新增的数据长度 */
 	size_t n_add_for_cb;
-	/** Number of bytes we have removed from the buffer since we last
-	 * tried to invoke callbacks. */
+	/** 上次尝试执行回调后删除的数据长度 */
 	size_t n_del_for_cb;
 
 #ifndef _EVENT_DISABLE_THREAD_SUPPORT
@@ -165,29 +162,29 @@ typedef ev_off_t ev_misalign_t;
 #endif
 #endif
 
-/** A single item in an evbuffer. */
+/** evbuffer的缓冲区链表成员 */
 struct evbuffer_chain {
-	/** points to next buffer in the chain */
+	/** 指向下一个chain */
 	struct evbuffer_chain *next;
 
-	/** total allocation available in the buffer field. */
+	/** buffer 大小 */
 	size_t buffer_len;
 
-	/** unused space at the beginning of buffer or an offset into a
-	 * file for sendfile buffers. */
+	/** 距离buffer未使用空间，一般为0.*/
 	ev_misalign_t misalign;
 
-	/** Offset into buffer + misalign at which to start writing.
-	 * In other words, the total number of bytes actually stored
-	 * in buffer. */
+	/** 存储的字节数据
+	 *  由于msialign的存在，该off是相对buffer + msialign
+	 *  不是相对buffer，buffer中真正的数据从buffer + msialign开始
+	 */
 	size_t off;
 
-	/** Set if special handling is required for this chain */
+	/** 缓冲区操作标识 */
 	unsigned flags;
-#define EVBUFFER_MMAP		0x0001	/**< memory in buffer is mmaped */
-#define EVBUFFER_SENDFILE	0x0002	/**< a chain used for sendfile */
+#define EVBUFFER_MMAP		0x0001	/**< chain是内存映射 */
+#define EVBUFFER_SENDFILE	0x0002	/**< chain 用于 sendfile */
 #define EVBUFFER_REFERENCE	0x0004	/**< a chain with a mem reference */
-#define EVBUFFER_IMMUTABLE	0x0008	/**< read-only chain */
+#define EVBUFFER_IMMUTABLE	0x0008	/**< 只读 chain */
 	/** a chain that mustn't be reallocated or freed, or have its contents
 	 * memmoved, until the chain is un-pinned. */
 #define EVBUFFER_MEM_PINNED_R	0x0010
@@ -197,8 +194,7 @@ struct evbuffer_chain {
 	 * un-pinned. */
 #define EVBUFFER_DANGLING	0x0040
 
-	/** Usually points to the read-write memory belonging to this
-	 * buffer allocated as part of the evbuffer_chain allocation.
+	/** 缓冲区
 	 * For mmap, this can be a read-only buffer and
 	 * EVBUFFER_IMMUTABLE will be set in flags.  For sendfile, it
 	 * may point to NULL.

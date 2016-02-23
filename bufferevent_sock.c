@@ -98,6 +98,7 @@ const struct bufferevent_ops bufferevent_ops_socket = {
 #define be_socket_add(ev, t)			\
 	_bufferevent_add_event((ev), (t))
 
+//用户添加数据，打开写事件。
 static void
 bufferevent_socket_outbuf_cb(struct evbuffer *buf,
     const struct evbuffer_cb_info *cbinfo,
@@ -148,12 +149,16 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 	 */
 	if (bufev->wm_read.high != 0) {
 		howmuch = bufev->wm_read.high - evbuffer_get_length(input);
-		/* we somehow lowered the watermark, stop reading */
+		/* 缓冲区超过高水位，挂起读。 */
 		if (howmuch <= 0) {
 			bufferevent_wm_suspend_read(bufev);
 			goto done;
 		}
 	}
+	
+	//因为用户可以限速，所以这么要检测最大的可读大小。  
+    //如果没有限速的话，那么将返回16384字节，即16K  
+    //默认情况下是没有限速的。  
 	readmax = _bufferevent_get_read_max(bufev_p);
 	if (howmuch < 0 || howmuch > readmax) /* The use of -1 for "unlimited"
 					       * uglifies this code. XXXX */
@@ -167,7 +172,7 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 
 	if (res == -1) {
 		int err = evutil_socket_geterror(fd);
-		if (EVUTIL_ERR_RW_RETRIABLE(err))
+		if (EVUTIL_ERR_RW_RETRIABLE(err))  //EINTER or EAGAIN 
 			goto reschedule;
 		/* error case */
 		what |= BEV_EVENT_ERROR;
@@ -181,7 +186,7 @@ bufferevent_readcb(evutil_socket_t fd, short event, void *arg)
 
 	_bufferevent_decrement_read_buckets(bufev_p, res);
 
-	/* Invoke the user callback - must always be called last */
+	/* 数据大于低水平，调用用户设置的回调。 */
 	if (evbuffer_get_length(input) >= bufev->wm_read.low)
 		_bufferevent_run_readcb(bufev);
 
@@ -218,25 +223,26 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 		what |= BEV_EVENT_TIMEOUT;
 		goto error;
 	}
+	//正在连接服务器...
 	if (bufev_p->connecting) {
 		int c = evutil_socket_finished_connecting(fd);
 		/* we need to fake the error if the connection was refused
 		 * immediately - usually connection to localhost on BSD */
-		if (bufev_p->connection_refused) {
+		if (bufev_p->connection_refused) {  //在bufferevent_socket_connect中被设置
 		  bufev_p->connection_refused = 0;
 		  c = -1;
 		}
 
-		if (c == 0)
+		if (c == 0) //正在连接，继续监听可写。
 			goto done;
 
 		bufev_p->connecting = 0;
-		if (c < 0) {
+		if (c < 0) {  //连接发生错误
 			event_del(&bufev->ev_write);
 			event_del(&bufev->ev_read);
 			_bufferevent_run_eventcb(bufev, BEV_EVENT_ERROR);
 			goto done;
-		} else {
+		} else {  //连接成功
 			connected = 1;
 #ifdef WIN32
 			if (BEV_IS_ASYNC(bufev)) {
@@ -247,6 +253,7 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 				goto done;
 			}
 #endif
+            //连接成功，调用用户错误处理函数。比较奇怪。
 			_bufferevent_run_eventcb(bufev,
 					BEV_EVENT_CONNECTED);
 			if (!(bufev->enabled & EV_WRITE) ||
@@ -259,14 +266,17 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 
 	atmost = _bufferevent_get_write_max(bufev_p);
 
+    //写被挂起
 	if (bufev_p->write_suspended)
 		goto done;
 
+    //存在可写数据
 	if (evbuffer_get_length(bufev->output)) {
 		evbuffer_unfreeze(bufev->output, 1);
+		//将缓冲区数据写入socket。
 		res = evbuffer_write_atmost(bufev->output, fd, atmost);
 		evbuffer_freeze(bufev->output, 1);
-		if (res == -1) {
+		if (res == -1) {  //写发生错误
 			int err = evutil_socket_geterror(fd);
 			if (EVUTIL_ERR_RW_RETRIABLE(err))
 				goto reschedule;
@@ -284,13 +294,12 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 		_bufferevent_decrement_write_buckets(bufev_p, res);
 	}
 
+    //缓冲区数据已写完，删除写事件。
 	if (evbuffer_get_length(bufev->output) == 0) {
 		event_del(&bufev->ev_write);
 	}
 
-	/*
-	 * Invoke the user callback if our buffer is drained or below the
-	 * low watermark.
+	/* 低于写低水位，调用用户回调。
 	 */
 	if ((res || !connected) &&
 	    evbuffer_get_length(bufev->output) <= bufev->wm_write.low) {
@@ -334,21 +343,38 @@ bufferevent_socket_new(struct event_base *base, evutil_socket_t fd,
 		return NULL;
 	}
 	bufev = &bufev_p->bev;
+	//设置将evbuffer的数据向fd传 
 	evbuffer_set_flags(bufev->output, EVBUFFER_FLAG_DRAINS_TO_FD);
 
+    //设置读写回调
 	event_assign(&bufev->ev_read, bufev->ev_base, fd,
 	    EV_READ|EV_PERSIST, bufferevent_readcb, bufev);
 	event_assign(&bufev->ev_write, bufev->ev_base, fd,
 	    EV_WRITE|EV_PERSIST, bufferevent_writecb, bufev);
 
+    //设置evbuffer的回调函数，使得外界给写缓冲区添加数据时，能触发  
+    //写操作，这个回调对于写事件的监听是很重要的  
 	evbuffer_add_cb(bufev->output, bufferevent_socket_outbuf_cb, bufev);
 
+	/* 虽然这里冻结了，但实际上Libevent在读数据或者写数据之前会解冻的读完或者写完数据后，又会马上冻结。
+	 * 这主要防止数据被意外修改。用户一般不会直接调用evbuffer_freeze或者evbuffer_unfreeze函数。
+	 * 一切的冻结和解冻操作都由Libevent内部完成。还有一点要注意，因为这里只是把写缓冲区的头部冻结了。
+	 * 所以还是可以往写缓冲区的尾部追加数据。同样，此时也是可以从读缓冲区读取数据。这个是必须的。
+	 * 因为在Libevent内部不解冻的时候，用户需要从读缓冲区中获取数据(这相当于从socket fd中读取数据)，
+	 * 用户也需要把数据写到写缓冲区中(这相当于把数据写入到socket fd中)。*/
+
+    //冻结读缓冲区的尾部，未解冻之前不能往读缓冲区追加数据  
+    //也就是说不能从socket fd中读取数据  
 	evbuffer_freeze(bufev->input, 0);
+
+	//冻结写缓冲区的头部，未解冻之前不能把写缓冲区的头部数据删除  
+    //也就是说不能把数据写到socket fd  
 	evbuffer_freeze(bufev->output, 1);
 
 	return bufev;
 }
 
+/* bufferevent 非阻塞连接 */
 int
 bufferevent_socket_connect(struct bufferevent *bev,
     struct sockaddr *sa, int socklen)
@@ -367,6 +393,7 @@ bufferevent_socket_connect(struct bufferevent *bev,
 		goto done;
 
 	fd = bufferevent_getfd(bev);
+	//还没设置fd，设置fd。
 	if (fd < 0) {
 		if (!sa)
 			goto done;
@@ -389,6 +416,7 @@ bufferevent_socket_connect(struct bufferevent *bev,
 			goto done;
 		} else
 #endif
+        //非阻塞连接
 		r = evutil_socket_connect(&fd, sa, socklen);
 		if (r < 0)
 			goto freesock;
@@ -403,13 +431,13 @@ bufferevent_socket_connect(struct bufferevent *bev,
 	}
 #endif
 	bufferevent_setfd(bev, fd);
-	if (r == 0) {
+	if (r == 0) {  /* 正在连接，监听读事件。*/
 		if (! be_socket_enable(bev, EV_WRITE)) {
 			bufev_p->connecting = 1;
 			result = 0;
 			goto done;
 		}
-	} else if (r == 1) {
+	} else if (r == 1) {  /* 连接成功，激活读事件。*/
 		/* The connect succeeded already. How very BSD of it. */
 		result = 0;
 		bufev_p->connecting = 1;
@@ -547,6 +575,7 @@ bufferevent_new(evutil_socket_t fd,
 }
 
 
+/* 将读写事件添加到event_base */
 static int
 be_socket_enable(struct bufferevent *bufev, short event)
 {
@@ -561,6 +590,7 @@ be_socket_enable(struct bufferevent *bufev, short event)
 	return 0;
 }
 
+//挂起某个事件(直接删除)。
 static int
 be_socket_disable(struct bufferevent *bufev, short event)
 {

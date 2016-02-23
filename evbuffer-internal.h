@@ -170,6 +170,7 @@ struct evbuffer_chain {
 	/** buffer 大小 */
 	size_t buffer_len;
 
+    /*往链表头添加数据时，chain持有空间可能超过时间所需空间，通过misalign将多余空间放在前面*/
 	/** 距离buffer未使用空间，一般为0.*/
 	ev_misalign_t misalign;
 

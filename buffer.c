@@ -955,6 +955,7 @@ done:
 	return result;
 }
 
+//É¾³ıÊı¾İ
 int
 evbuffer_drain(struct evbuffer *buf, size_t len)
 {

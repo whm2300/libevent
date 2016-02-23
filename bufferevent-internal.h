@@ -226,13 +226,13 @@ struct bufferevent_ops {
 	*/
 	off_t mem_offset;
 
-	/** Enables one or more of EV_READ|EV_WRITE on a bufferevent.  Does
+	/** 将event添加到event_base  Does
 	    not need to adjust the 'enabled' field.  Returns 0 on success, -1
 	    on failure.
 	 */
 	int (*enable)(struct bufferevent *, short);
 
-	/** Disables one or more of EV_READ|EV_WRITE on a bufferevent.  Does
+	/** 将event从event_base中删除  Does
 	    not need to adjust the 'enabled' field.  Returns 0 on success, -1
 	    on failure.
 	 */

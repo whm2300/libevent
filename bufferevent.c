@@ -64,6 +64,7 @@
 static void _bufferevent_cancel_all(struct bufferevent *bev);
 
 
+//挂起读事件
 void
 bufferevent_suspend_read(struct bufferevent *bufev, bufferevent_suspend_flags what)
 {
@@ -72,7 +73,7 @@ bufferevent_suspend_read(struct bufferevent *bufev, bufferevent_suspend_flags wh
 	BEV_LOCK(bufev);
 	if (!bufev_private->read_suspended)
 		bufev->be_ops->disable(bufev, EV_READ);
-	bufev_private->read_suspended |= what;
+	bufev_private->read_suspended |= what;  //挂起原因
 	BEV_UNLOCK(bufev);
 }
 
@@ -278,6 +279,7 @@ bufferevent_init_common(struct bufferevent_private *bufev_private,
 {
 	struct bufferevent *bufev = &bufev_private->bev;
 
+    /*设置读写缓冲区*/
 	if (!bufev->input) {
 		if ((bufev->input = evbuffer_new()) == NULL)
 			return -1;
@@ -293,18 +295,18 @@ bufferevent_init_common(struct bufferevent_private *bufev_private,
 	bufev_private->refcnt = 1;
 	bufev->ev_base = base;
 
-	/* Disable timeouts. */
+	/* 默认读写不支持超时 */
 	evutil_timerclear(&bufev->timeout_read);
 	evutil_timerclear(&bufev->timeout_write);
 
-	bufev->be_ops = ops;
+	bufev->be_ops = ops;  /*设置实际对象操作指针*/
 
 	/*
 	 * Set to EV_WRITE so that using bufferevent_write is going to
 	 * trigger a callback.  Reading needs to be explicitly enabled
 	 * because otherwise no data will be available.
 	 */
-	bufev->enabled = EV_WRITE;
+	bufev->enabled = EV_WRITE;  /* 默认支持可写 */
 
 #ifndef _EVENT_DISABLE_THREAD_SUPPORT
 	if (options & BEV_OPT_THREADSAFE) {
@@ -336,12 +338,14 @@ bufferevent_init_common(struct bufferevent_private *bufev_private,
 
 	bufev_private->options = options;
 
+    //将evbuffer和bufferevent相关联
 	evbuffer_set_parent(bufev->input, bufev);
 	evbuffer_set_parent(bufev->output, bufev);
 
 	return 0;
 }
 
+/* 设置事件回调 */
 void
 bufferevent_setcb(struct bufferevent *bufev,
     bufferevent_data_cb readcb, bufferevent_data_cb writecb,
@@ -421,6 +425,7 @@ bufferevent_enable(struct bufferevent *bufev, short event)
 
 	bufev->enabled |= event;
 
+    //调用对应类型的enbale函数，添加到event_base。因为不同类型的bufferevent有不同的enable函数。
 	if (impl_events && bufev->be_ops->enable(bufev, impl_events) < 0)
 		r = -1;
 
@@ -454,7 +459,7 @@ bufferevent_set_timeouts(struct bufferevent *bufev,
 }
 
 
-/* Obsolete; use bufferevent_set_timeouts */
+/* 设置读写超时时间 */
 void
 bufferevent_settimeout(struct bufferevent *bufev,
 		       int timeout_read, int timeout_write)
@@ -512,7 +517,9 @@ bufferevent_disable(struct bufferevent *bufev, short event)
 }
 
 /*
- * Sets the water marks
+ * 设置回调水位:
+ * 读低水位:缓冲区达到该字节数才调用用户回调，否则不调用。
+ * 读高水位:缓冲区达到该字节后，挂起读事件，直到水位降低。
  */
 
 void
@@ -532,11 +539,13 @@ bufferevent_setwatermark(struct bufferevent *bufev, short events,
 		bufev->wm_read.low = lowmark;
 		bufev->wm_read.high = highmark;
 
+        //设置高水位
 		if (highmark) {
 			/* There is now a new high-water mark for read.
 			   enable the callback if needed, and see if we should
 			   suspend/bufferevent_wm_unsuspend. */
 
+            //设置高水位回调
 			if (bufev_private->read_watermarks_cb == NULL) {
 				bufev_private->read_watermarks_cb =
 				    evbuffer_add_cb(bufev->input,
@@ -547,12 +556,13 @@ bufferevent_setwatermark(struct bufferevent *bufev, short events,
 				      bufev_private->read_watermarks_cb,
 				      EVBUFFER_CB_ENABLED|EVBUFFER_CB_NODEFER);
 
+            /* 根据缓冲区现有数据长度和水位大小，调整可读事件。 */
 			if (evbuffer_get_length(bufev->input) >= highmark)
 				bufferevent_wm_suspend_read(bufev);
 			else if (evbuffer_get_length(bufev->input) < highmark)
 				bufferevent_wm_unsuspend_read(bufev);
 		} else {
-			/* There is now no high-water mark for read. */
+			/* 高水位为0，取消挂起。 */
 			if (bufev_private->read_watermarks_cb)
 				evbuffer_cb_clear_flags(bufev->input,
 				    bufev_private->read_watermarks_cb,

@@ -89,6 +89,7 @@ struct eventop {
 	void (*dealloc)(struct event_base *);
 	/** Flag: set if we need to reinitialize the event base after we fork.
 	 */
+	 /* 是否需要初始化 */
 	int need_reinit;
 	/** 后端能提供的特征 */
 	enum event_method_feature features;
@@ -178,10 +179,9 @@ struct event_base {
 	 * by the O(1) backends. */
 	struct event_changelist changelist;
 
-	/** Function pointers used to describe the backend that this event_base
-	 * uses for signals */
+	/** 信号操作函数 */
 	const struct eventop *evsigsel;
-	/** Data to implement the common signal handelr code. */
+	/** Socketpair封装，用于信号实现。 */
 	struct evsig_info sig;
 
 	/** Number of virtual events */
@@ -202,11 +202,10 @@ struct event_base {
 	/** The currently running priority of events */
 	int event_running_priority;
 
-	/** Set if we're running the event_base_loop function, to prevent
-	 * reentrant invocation. */
+	/** 是否继续循环. */
 	int running_loop;
 
-	/* Active event management. */
+	/* 激活事件队列，下标为优先级。 */
 	/** An array of nactivequeues queues for active events (ones that
 	 * have triggered, and whose callbacks need to be called).  Low
 	 * priority numbers are more important, and stall higher ones.
@@ -229,10 +228,10 @@ struct event_base {
 	 * events. */
 	struct deferred_cb_queue defer_queue;
 
-	/** Mapping from file descriptors to enabled (added) events */
+	/** 所有监听的IO事件 */
 	struct event_io_map io;
 
-	/** Mapping from signal numbers to enabled (added) events. */
+	/** 所有监听的信号事件. */
 	struct event_signal_map sigmap;
 
 	/** All events that have been enabled (added) in this event_base */
@@ -241,10 +240,10 @@ struct event_base {
 	/** Stored timeval; used to detect when time is running backwards. */
 	struct timeval event_tv;
 
-	/** Priority queue of events with timeouts. */
+	/** 时间堆. */
 	struct min_heap timeheap;
 
-	/** Stored timeval: used to avoid calling gettimeofday/clock_gettime
+	/** 时间缓存: used to avoid calling gettimeofday/clock_gettime
 	 * too often. */
 	struct timeval tv_cache;
 
@@ -283,8 +282,7 @@ struct event_base {
 	/** True if the base already has a pending notify, and we don't need
 	 * to add any more. */
 	int is_notify_pending;
-	/** A socketpair used by some th_notify functions to wake up the main
-	 * thread. */
+	/** Socketpair 用于唤醒当前线程 */
 	evutil_socket_t th_notify_fd[2];
 	/** An event used by some th_notify functions to wake up the main
 	 * thread. */

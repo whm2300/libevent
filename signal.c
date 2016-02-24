@@ -132,7 +132,7 @@ evsig_cb(evutil_socket_t fd, short what, void *arg)
 	static char signals[1024];
 	ev_ssize_t n;
 	int i;
-	int ncaught[NSIG];
+	int ncaught[NSIG];  //NSIG系统信号数目
 	struct event_base *base;
 
 	base = arg;
@@ -159,7 +159,7 @@ evsig_cb(evutil_socket_t fd, short what, void *arg)
 
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
 	for (i = 0; i < NSIG; ++i) {
-		if (ncaught[i])
+		if (ncaught[i])  //激活信号事件
 			evmap_signal_active(base, i, ncaught[i]);
 	}
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
@@ -193,12 +193,16 @@ evsig_init(struct event_base *base)
 	evutil_make_socket_nonblocking(base->sig.ev_signal_pair[0]);
 	evutil_make_socket_nonblocking(base->sig.ev_signal_pair[1]);
 
+    //监听读事件
 	event_assign(&base->sig.ev_signal, base, base->sig.ev_signal_pair[1],
 		EV_READ | EV_PERSIST, evsig_cb, base);
 
+    //设置为内部事件
 	base->sig.ev_signal.ev_flags |= EVLIST_INTERNAL;
+	//设置信号事件优先级(最高)
 	event_priority_set(&base->sig.ev_signal, 0);
 
+    //设置信号操作函数
 	base->evsigsel = &evsigops;
 
 	return 0;
@@ -253,6 +257,7 @@ _evsig_set_handler(struct event_base *base,
 	sa.sa_flags |= SA_RESTART;
 	sigfillset(&sa.sa_mask);
 
+    //设置信号处理函数
 	if (sigaction(evsignal, &sa, sig->sh_old[evsignal]) == -1) {
 		event_warn("sigaction");
 		mm_free(sig->sh_old[evsignal]);
@@ -282,6 +287,7 @@ evsig_add(struct event_base *base, evutil_socket_t evsignal, short old, short ev
 
 	/* catch signals if they happen quickly */
 	EVSIGBASE_LOCK();
+	//如果有多个event_base，那么捕抓信号这个工作只能由其中一个完成。
 	if (evsig_base != base && evsig_base_n_signals_added) {
 		event_warnx("Added a signal to event base %p with signals "
 		    "already added to event_base %p.  Only one can have "
@@ -297,11 +303,13 @@ evsig_add(struct event_base *base, evutil_socket_t evsignal, short old, short ev
 	EVSIGBASE_UNLOCK();
 
 	event_debug(("%s: %d: changing signal handler", __func__, (int)evsignal));
+	//设置信号抓捕函数，所有信号都采用同一个信号抓捕函数。
 	if (_evsig_set_handler(base, (int)evsignal, evsig_handler) == -1) {
 		goto err;
 	}
 
 
+    //event_base第一次监听信号事件。要添加ev_signal到event_base中
 	if (!sig->ev_signal_added) {
 		if (event_add(&sig->ev_signal, NULL))
 			goto err;

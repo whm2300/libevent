@@ -613,10 +613,10 @@ int event_base_set(struct event_base *, struct event *);
 /**@{*/
 /** Block until we have an active event, then exit once all active events
  * have had their callbacks run. */
-#define EVLOOP_ONCE	0x01
+#define EVLOOP_ONCE	0x01  //一直等待，直到有事件可以激活，激活并执行事件回调，然后才返回，即阻塞式
 /** Do not block: see which events are ready now, run the callbacks
  * of the highest-priority ones, then exit. */
-#define EVLOOP_NONBLOCK	0x02
+#define EVLOOP_NONBLOCK	0x02  //非阻塞，做检查，有事件可以激活，则激活执行，否则就返回
 /**@}*/
 
 /**

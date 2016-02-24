@@ -93,16 +93,16 @@ extern const struct eventop win32ops;
 
 /* Array of backends in order of preference. */
 static const struct eventop *eventops[] = {
-#ifdef _EVENT_HAVE_EVENT_PORTS
+#ifdef _EVENT_HAVE_EVENT_PORTS  //Solaris 
 	&evportops,
 #endif
-#ifdef _EVENT_HAVE_WORKING_KQUEUE
+#ifdef _EVENT_HAVE_WORKING_KQUEUE   //BSD
 	&kqops,
 #endif
-#ifdef _EVENT_HAVE_EPOLL
+#ifdef _EVENT_HAVE_EPOLL  //linux
 	&epollops,
 #endif
-#ifdef _EVENT_HAVE_DEVPOLL
+#ifdef _EVENT_HAVE_DEVPOLL  //Solaris
 	&devpollops,
 #endif
 #ifdef _EVENT_HAVE_POLL
@@ -566,7 +566,7 @@ event_base_new_with_config(const struct event_config *cfg)
 	detect_monotonic();
 	gettime(base, &base->event_tv);
 
-	min_heap_ctor(&base->timeheap);
+	min_heap_ctor(&base->timeheap);  //初始化时间堆
 	TAILQ_INIT(&base->eventqueue);
 	base->sig.ev_signal_pair[0] = -1;
 	base->sig.ev_signal_pair[1] = -1;
@@ -588,9 +588,10 @@ event_base_new_with_config(const struct event_config *cfg)
 	should_check_environment =
 	    !(cfg && (cfg->flags & EVENT_BASE_FLAG_IGNORE_ENV));
 
+    //选择后端
 	for (i = 0; eventops[i] && !base->evbase; i++) {
 		if (cfg != NULL) {
-			/* determine if this backend should be avoided */
+			/* 是否支持 */
 			if (event_config_is_avoided_method(cfg,
 				eventops[i]->name))
 				continue;
@@ -599,13 +600,15 @@ event_base_new_with_config(const struct event_config *cfg)
 				continue;
 		}
 
-		/* also obey the environment variables */
+		/* 是否禁用 */
 		if (should_check_environment &&
 		    event_is_method_disabled(eventops[i]->name))
 			continue;
 
+        //找到一个满足条件后端
 		base->evsel = eventops[i];
 
+        //初始化后端
 		base->evbase = base->evsel->init(base);
 	}
 
@@ -620,7 +623,7 @@ event_base_new_with_config(const struct event_config *cfg)
 	if (evutil_getenv("EVENT_SHOW_METHOD"))
 		event_msgx("libevent using: %s", base->evsel->name);
 
-	/* allocate a single active event queue */
+	/* 初始化与信号相关的事件优先队列 */
 	if (event_base_priority_init(base, 1) < 0) {
 		event_base_free(base);
 		return NULL;
@@ -1336,9 +1339,10 @@ event_process_active_single_queue(struct event_base *base,
 	EVUTIL_ASSERT(activeq != NULL);
 
 	for (ev = TAILQ_FIRST(activeq); ev; ev = TAILQ_FIRST(activeq)) {
+		//如果是永久事件，那么只需从active队列中删除。去掉event EVLIST_ACTIVE标识。
 		if (ev->ev_events & EV_PERSIST)
 			event_queue_remove(base, ev, EVLIST_ACTIVE);
-		else
+		else  //不是的话，那么就要把这个event删除掉。从event_base相关队列中删除，非释放内存。
 			event_del_internal(ev);
 		if (!(ev->ev_flags & EVLIST_INTERNAL))
 			++count;
@@ -1355,6 +1359,7 @@ event_process_active_single_queue(struct event_base *base,
 		base->current_event_waiters = 0;
 #endif
 
+        //处理事件
 		switch (ev->ev_closure) {
 		case EV_CLOSURE_SIGNAL:
 			event_signal_closure(base, ev);
@@ -1364,6 +1369,7 @@ event_process_active_single_queue(struct event_base *base,
 			break;
 		default:
 		case EV_CLOSURE_NONE:
+			//调用用户回调
 			EVBASE_RELEASE_LOCK(base, th_base_lock);
 			(*ev->ev_callback)(
 				ev->ev_fd, ev->ev_res, ev->ev_arg);
@@ -1431,9 +1437,11 @@ event_process_active(struct event_base *base)
 	struct event_list *activeq = NULL;
 	int i, c = 0;
 
+    //从高优先级到低优先级遍历优先级数组
 	for (i = 0; i < base->nactivequeues; ++i) {
+		 //遍历该优先级的所有激活event
 		if (TAILQ_FIRST(&base->activequeues[i]) != NULL) {
-			base->event_running_priority = i;
+			base->event_running_priority = i;  //记录正在处理队列的优先级
 			activeq = &base->activequeues[i];
 			c = event_process_active_single_queue(base, activeq);
 			if (c < 0) {
@@ -1588,7 +1596,7 @@ event_base_loop(struct event_base *base, int flags)
 	while (!done) {
 		base->event_continue = 0;
 
-		/* Terminate the loop if we have been asked to */
+		/* 检测是否需要退出循环 */
 		if (base->event_gotterm) {
 			break;
 		}
@@ -1600,6 +1608,7 @@ event_base_loop(struct event_base *base, int flags)
 		timeout_correct(base, &tv);
 
 		tv_p = &tv;
+		//没有激活事件，从时间堆中取出最近超时时间。
 		if (!N_ACTIVE_CALLBACKS(base) && !(flags & EVLOOP_NONBLOCK)) {
 			timeout_next(base, &tv_p);
 		} else {
@@ -1620,7 +1629,7 @@ event_base_loop(struct event_base *base, int flags)
 		/* update last old time */
 		gettime(base, &base->event_tv);
 
-		clear_time_cache(base);
+		clear_time_cache(base);  //清空时间缓存
 
 		res = evsel->dispatch(base, tv_p);
 
@@ -1631,10 +1640,11 @@ event_base_loop(struct event_base *base, int flags)
 			goto done;
 		}
 
-		update_time_cache(base);
+		update_time_cache(base);  //更新时间
 
 		timeout_process(base);
 
+        //遍历激活数组，处理所有激活事件。
 		if (N_ACTIVE_CALLBACKS(base)) {
 			int n = event_process_active(base);
 			if ((flags & EVLOOP_ONCE)
@@ -2088,11 +2098,11 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 	if ((ev->ev_events & (EV_READ|EV_WRITE|EV_SIGNAL)) &&
 	    !(ev->ev_flags & (EVLIST_INSERTED|EVLIST_ACTIVE))) {
 		if (ev->ev_events & (EV_READ|EV_WRITE))
-			res = evmap_io_add(base, ev->ev_fd, ev);
+			res = evmap_io_add(base, ev->ev_fd, ev);  //加入io队列
 		else if (ev->ev_events & EV_SIGNAL)
-			res = evmap_signal_add(base, (int)ev->ev_fd, ev);
+			res = evmap_signal_add(base, (int)ev->ev_fd, ev);  //加入信号队列
 		if (res != -1)
-			event_queue_insert(base, ev, EVLIST_INSERTED);
+			event_queue_insert(base, ev, EVLIST_INSERTED);  //向event_base注册事件
 		if (res == 1) {
 			/* evmap says we need to notify the main thread. */
 			notify = 1;
@@ -2338,6 +2348,7 @@ event_active_nolock(struct event *ev, int res, short ncalls)
 		ev->ev_pncalls = NULL;
 	}
 
+    //将ev添加到激活队列
 	event_queue_insert(base, ev, EVLIST_ACTIVE);
 
 	if (EVBASE_NEED_NOTIFY(base))
@@ -2592,6 +2603,7 @@ event_queue_insert(struct event_base *base, struct event *ev, int queue)
 {
 	EVENT_BASE_ASSERT_LOCKED(base);
 
+    //已经添加到激活队列
 	if (ev->ev_flags & queue) {
 		/* Double insertion is possible for active events */
 		if (queue & EVLIST_ACTIVE)
@@ -2602,15 +2614,17 @@ event_queue_insert(struct event_base *base, struct event *ev, int queue)
 		return;
 	}
 
+    //记录非内部事件激活数目
 	if (~ev->ev_flags & EVLIST_INTERNAL)
 		base->event_count++;
 
+    //此时event结构体的ev_flags变量为EVLIST_INIT | EVLIST_INSERTED | EVLIST_ACTIVE了。
 	ev->ev_flags |= queue;
 	switch (queue) {
 	case EVLIST_INSERTED:
 		TAILQ_INSERT_TAIL(&base->eventqueue, ev, ev_next);
 		break;
-	case EVLIST_ACTIVE:
+	case EVLIST_ACTIVE:  //将event插入到对应对应优先级的激活队列中
 		base->event_count_active++;
 		TAILQ_INSERT_TAIL(&base->activequeues[ev->ev_pri],
 		    ev,ev_active_next);

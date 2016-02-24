@@ -280,9 +280,14 @@ evmap_io_add(struct event_base *base, evutil_socket_t fd, struct event *ev)
 			return (-1);
 	}
 #endif
+    //扩容
 	GET_IO_SLOT_AND_CTOR(ctx, io, fd, evmap_io, evmap_io_init,
 						 evsel->fdinfo_len);
 
+     //同一个fd可以调用event_new,event_add  
+    //多次。nread、nwrite就是记录有多少次。如果每次event_new的回调函数  
+    //都不一样，那么当fd有可读或者可写时，这些回调函数都是会触发的。  
+    //对一个fd不能event_new、event_add太多次的。后面会进行判断  
 	nread = ctx->nread;
 	nwrite = ctx->nwrite;
 
@@ -291,6 +296,8 @@ evmap_io_add(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	if (nwrite)
 		old |= EV_WRITE;
 
+    //记录读写是事件是否是第一次添加到IO复用
+    //如果是则后面需要加入到监听。
 	if (ev->ev_events & EV_READ) {
 		if (++nread == 1)
 			res |= EV_READ;
@@ -312,6 +319,7 @@ evmap_io_add(struct event_base *base, evutil_socket_t fd, struct event *ev)
 		return -1;
 	}
 
+    //第一次添加事件，加入监听。
 	if (res) {
 		void *extra = ((char*)ctx) + sizeof(struct evmap_io);
 		/* XXX(niels): we cannot mix edge-triggered and
@@ -325,7 +333,7 @@ evmap_io_add(struct event_base *base, evutil_socket_t fd, struct event *ev)
 
 	ctx->nread = (ev_uint16_t) nread;
 	ctx->nwrite = (ev_uint16_t) nwrite;
-	TAILQ_INSERT_TAIL(&ctx->events, ev, ev_io_next);
+	TAILQ_INSERT_TAIL(&ctx->events, ev, ev_io_next);  //将事件添加到事件队列最后
 
 	return (retval);
 }
@@ -399,6 +407,7 @@ evmap_io_active(struct event_base *base, evutil_socket_t fd, short events)
 	GET_IO_SLOT(ctx, io, fd, evmap_io);
 
 	EVUTIL_ASSERT(ctx);
+	//遍历fd相关的事件队列，激活所有相关事件。
 	TAILQ_FOREACH(ev, &ctx->events, ev_io_next) {
 		if (ev->ev_events & events)
 			event_active_nolock(ev, ev->ev_events & events, 1);
@@ -417,10 +426,12 @@ evmap_signal_init(struct evmap_signal *entry)
 int
 evmap_signal_add(struct event_base *base, int sig, struct event *ev)
 {
+    //调用初始化设置的信号操作函数
 	const struct eventop *evsel = base->evsigsel;
 	struct event_signal_map *map = &base->sigmap;
 	struct evmap_signal *ctx = NULL;
 
+    //扩展信号空间
 	if (sig >= map->nentries) {
 		if (evmap_make_space(
 			map, sig, sizeof(struct evmap_signal *)) == -1)

@@ -394,6 +394,7 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 	int i, res;
 	long timeout = -1;
 
+    //超时时间由unix时间戳转换成毫秒
 	if (tv != NULL) {
 		timeout = evutil_tv_to_msec(tv);
 		if (timeout < 0 || timeout > MAX_EPOLL_TIMEOUT_MSEC) {
@@ -428,7 +429,7 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 		int what = events[i].events;
 		short ev = 0;
 
-		if (what & (EPOLLHUP|EPOLLERR)) {
+		if (what & (EPOLLHUP|EPOLLERR)) {  //发生错误，激活读写事件。
 			ev = EV_READ | EV_WRITE;
 		} else {
 			if (what & EPOLLIN)
@@ -440,6 +441,7 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 		if (!ev)
 			continue;
 
+        //将fd对应的event放入激活队列
 		evmap_io_active(base, events[i].data.fd, ev | EV_ET);
 	}
 

@@ -1131,7 +1131,7 @@ const struct timeval *event_base_init_common_timeout(struct event_base *base,
 
 #if !defined(_EVENT_DISABLE_MM_REPLACEMENT) || defined(_EVENT_IN_DOXYGEN)
 /**
-  设置内存分配函数，一般无需设置。如尚梃置，注意:
+  设置内存分配函数，一般无需设置。如需设置，注意:
   1、替换内存管理函数影响libevent 随后的所有分配、调整大小和释放内存操作。所以必须保证在调用任何其他libevent函数之前进行定制。
   否则，Libevent可能用定制的free函数释放C语言 库的malloc函数分配的内存。
   2、malloc和realloc函数返回的内存块应该具有和C库返回的内存块一样的地址对齐。

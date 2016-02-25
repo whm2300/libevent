@@ -136,13 +136,11 @@ struct event_signal_map {
  * queue can be faster.
  **/
 struct common_timeout_list {
-	/* List of events currently waiting in the queue. */
+	/* 超时event队列，所有具有相同超时间隔的超时事件。 */
 	struct event_list events;
-	/* 'magic' timeval used to indicate the duration of events in this
-	 * queue. */
+	/* 超时时长 */
 	struct timeval duration;
-	/* Event that triggers whenever one of the events in the queue is
-	 * ready to activate */
+	/* 超时event代表，放入event_base进行监听。 */
 	struct event timeout_event;
 	/* The event_base that this timeout list is part of */
 	struct event_base *base;
@@ -216,12 +214,11 @@ struct event_base {
 
 	/* common timeout logic */
 
-	/** An array of common_timeout_list* for all of the common timeout
-	 * values we know. */
+	/** 公用超时数组，每个数组元素对应不同的超时间隔。 */
 	struct common_timeout_list **common_timeout_queues;
-	/** The number of entries used in common_timeout_queues */
+	/** 已用元素个数 */
 	int n_common_timeouts;
-	/** The total size of common_timeout_queues. */
+	/** 总长度*/
 	int n_common_timeouts_allocated;
 
 	/** List of defered_cb that are active.  We run these after the active

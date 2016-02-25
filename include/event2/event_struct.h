@@ -104,7 +104,7 @@ struct event {
 		/* used for io events */
 		struct {
 			TAILQ_ENTRY(event) ev_io_next;
-			struct timeval ev_timeout;
+			struct timeval ev_timeout;   //记录持久超时事件超时时间
 		} ev_io;
 
 		/* used by signal events */
@@ -117,11 +117,11 @@ struct event {
 	} _ev;
 
 	short ev_events;  //记录监听事件类型
-	short ev_res;		/* 记录当前激活时间类型 */
+	short ev_res;		/* 记录当前激活事件类型 */
 	short ev_flags;
 	ev_uint8_t ev_pri;	/* 本event的优先级。调用event_priority_set设置  */
 	ev_uint8_t ev_closure;
-	struct timeval ev_timeout;  //用于定时器,指定定时器的超时值
+	struct timeval ev_timeout;  //超时的绝对时间
 
 	/* 时间回调函数 */
 	void (*ev_callback)(evutil_socket_t, short, void *arg);

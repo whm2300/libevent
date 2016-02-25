@@ -1267,7 +1267,7 @@ event_persist_closure(struct event_base *base, struct event *ev)
         short evcb_res;
         void *evcb_arg;
 
-	/* reschedule the persistent event if we have a timeout. */
+	/* EV_PERSIST超时事件，设置过ev_io_timeout，否则为0。  */
 	if (ev->ev_io_timeout.tv_sec || ev->ev_io_timeout.tv_usec) {
 		/* If there was a timeout, we want it to run at an interval of
 		 * ev_io_timeout after the last time it was _scheduled_ for,
@@ -1290,9 +1290,10 @@ event_persist_closure(struct event_base *base, struct event *ev)
 			}
 		} else {
 			delay = ev->ev_io_timeout;
+			//因超时被激活，下次超时时间为本次超时时间加上delay时间。
 			if (ev->ev_res & EV_TIMEOUT) {
 				relative_to = ev->ev_timeout;
-			} else {
+			} else {  //不是被超时激活(读写超时)，重新计算超时值。
 				relative_to = now;
 			}
 		}
@@ -1306,6 +1307,7 @@ event_persist_closure(struct event_base *base, struct event *ev)
 			evutil_timeradd(&now, &delay, &run_at);
 		}
 		run_at.tv_usec |= usec_mask;
+		//把这个event再次添加到event_base中。1表示绝对时间。
 		event_add_internal(ev, &run_at, 1);
 	}
 
@@ -1318,7 +1320,7 @@ event_persist_closure(struct event_base *base, struct event *ev)
 	// Release the lock
  	EVBASE_RELEASE_LOCK(base, th_base_lock);
 
-	// Execute the callback
+	// 执行回调
         (evcb_callback)(evcb_fd, evcb_res, evcb_arg);
 }
 
@@ -1361,10 +1363,10 @@ event_process_active_single_queue(struct event_base *base,
 
         //处理事件
 		switch (ev->ev_closure) {
-		case EV_CLOSURE_SIGNAL:
+		case EV_CLOSURE_SIGNAL:  //信号
 			event_signal_closure(base, ev);
 			break;
-		case EV_CLOSURE_PERSIST:
+		case EV_CLOSURE_PERSIST:  //持久超时
 			event_persist_closure(base, ev);
 			break;
 		default:
@@ -1642,6 +1644,7 @@ event_base_loop(struct event_base *base, int flags)
 
 		update_time_cache(base);  //更新时间
 
+        //将超时时间放入激活队列。
 		timeout_process(base);
 
         //遍历激活数组，处理所有激活事件。
@@ -2074,8 +2077,7 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 	EVUTIL_ASSERT(!(ev->ev_flags & ~EVLIST_ALL));
 
 	/*
-	 * prepare for timeout insertion further below, if we get a
-	 * failure on any step, we should not change any state.
+	 * 超时时间不为NULL，说明是超时event，为其在小根堆预留一个位置。
 	 */
 	if (tv != NULL && !(ev->ev_flags & EVLIST_TIMEOUT)) {
 		if (min_heap_reserve(&base->timeheap,
@@ -2095,6 +2097,7 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 	}
 #endif
 
+    //将读写事件和信号时间添加到对应的队列
 	if ((ev->ev_events & (EV_READ|EV_WRITE|EV_SIGNAL)) &&
 	    !(ev->ev_flags & (EVLIST_INSERTED|EVLIST_ACTIVE))) {
 		if (ev->ev_events & (EV_READ|EV_WRITE))
@@ -2119,17 +2122,14 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 		int common_timeout;
 
 		/*
-		 * for persistent timeout events, we remember the
-		 * timeout value and re-add the event.
-		 *
+		 * 记录持久event超时时间
 		 * If tv_is_absolute, this was already set.
 		 */
 		if (ev->ev_closure == EV_CLOSURE_PERSIST && !tv_is_absolute)
 			ev->ev_io_timeout = *tv;
 
 		/*
-		 * we already reserved memory above for the case where we
-		 * are not replacing an existing timeout.
+		 * 该event之前已被添加，从超时时间堆中删除这个event。
 		 */
 		if (ev->ev_flags & EVLIST_TIMEOUT) {
 			/* XXX I believe this is needless. */
@@ -2159,6 +2159,7 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 		gettime(base, &now);
 
 		common_timeout = is_common_timeout(tv, base);
+		//event_add为相对时间，把相对时间转换为绝对时间存储。
 		if (tv_is_absolute) {
 			ev->ev_timeout = *tv;
 		} else if (common_timeout) {
@@ -2168,6 +2169,7 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 			ev->ev_timeout.tv_usec |=
 			    (tv->tv_usec & ~MICROSECONDS_MASK);
 		} else {
+		    //记录超时的绝对时间
 			evutil_timeradd(&now, tv, &ev->ev_timeout);
 		}
 
@@ -2175,6 +2177,7 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 			 "event_add: timeout in %d seconds, call %p",
 			 (int)tv->tv_sec, ev->ev_callback));
 
+        //插入到超时队列
 		event_queue_insert(base, ev, EVLIST_TIMEOUT);
 		if (common_timeout) {
 			struct common_timeout_list *ctl =
@@ -2427,11 +2430,13 @@ timeout_next(struct event_base *base, struct timeval **tv_p)
 		goto out;
 	}
 
+    //如果超时时间<=当前时间，不能等待，需要立即返回
 	if (evutil_timercmp(&ev->ev_timeout, &now, <=)) {
 		evutil_timerclear(tv);
 		goto out;
 	}
 
+    //将时间堆中的绝对时间转换成超时时间。
 	evutil_timersub(&ev->ev_timeout, &now, tv);
 
 	EVUTIL_ASSERT(tv->tv_sec >= 0);
@@ -2518,7 +2523,10 @@ timeout_process(struct event_base *base)
 		if (evutil_timercmp(&ev->ev_timeout, &now, >))
 			break;
 
-		/* delete this event from the I/O queues */
+		/* 从event_base所有队列中删除超时event
+		 * 在处理激活event时，如果设置了EV_PERSIST会再次添加到event_base
+		 * 再次添加时重新计算超时时间
+		 */
 		event_del_internal(ev);
 
 		event_debug(("timeout_process: call %p",

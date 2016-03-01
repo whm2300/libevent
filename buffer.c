@@ -1018,7 +1018,7 @@ evbuffer_drain(struct evbuffer *buf, size_t len)
 	}
 
 	buf->n_del_for_cb += len;
-	/* Tell someone about changes in this buffer */
+	/* buffer数据长度发生改变，执行设置的回调。 */
 	evbuffer_invoke_callbacks(buf);
 
 done:

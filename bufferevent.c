@@ -114,8 +114,7 @@ bufferevent_unsuspend_write(struct bufferevent *bufev, bufferevent_suspend_flags
 }
 
 
-/* Callback to implement watermarks on the input buffer.  Only enabled
- * if the watermark is set. */
+/* 根据高水位和buffer长度大小，设置挂起或取消挂起读。只有在设置了高水位时才生效。 */
 static void
 bufferevent_inbuf_wm_cb(struct evbuffer *buf,
     const struct evbuffer_cb_info *cbinfo,
@@ -545,7 +544,7 @@ bufferevent_setwatermark(struct bufferevent *bufev, short events,
 			   enable the callback if needed, and see if we should
 			   suspend/bufferevent_wm_unsuspend. */
 
-            //设置高水位回调
+            //设置buffer数据改变回调。当buffer数据长度发生变化，该函数被调用。
 			if (bufev_private->read_watermarks_cb == NULL) {
 				bufev_private->read_watermarks_cb =
 				    evbuffer_add_cb(bufev->input,

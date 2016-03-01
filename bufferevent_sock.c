@@ -278,9 +278,9 @@ bufferevent_writecb(evutil_socket_t fd, short event, void *arg)
 		evbuffer_freeze(bufev->output, 1);
 		if (res == -1) {  //写发生错误
 			int err = evutil_socket_geterror(fd);
-			if (EVUTIL_ERR_RW_RETRIABLE(err))
+			if (EVUTIL_ERR_RW_RETRIABLE(err))  //socket缓冲区满，一次未写完，继续监听可写事件，等待下次写入。
 				goto reschedule;
-			what |= BEV_EVENT_ERROR;
+			what |= BEV_EVENT_ERROR;  //写发生异常错误
 		} else if (res == 0) {
 			/* eof case
 			   XXXX Actually, a 0 on write doesn't indicate
